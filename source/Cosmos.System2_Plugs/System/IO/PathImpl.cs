@@ -1,12 +1,11 @@
 //#define COSMOSDEBUG
-
 using System;
 using System.IO;
-
 using Cosmos.System;
 using Cosmos.Common;
 using Cosmos.Debug.Kernel;
-using Cosmos.IL2CPU.API;
+using IL2CPU.API;
+using IL2CPU.API.Attribs;
 using Cosmos.System.FileSystem;
 using Cosmos.System.FileSystem.VFS;
 
@@ -243,7 +242,7 @@ namespace Cosmos.System_Plugs.System.IO
 
         public static string GetTempPath()
         {
-            return @"\Temp";
+            return @"0:\Temp";
         }
 
         public static string RemoveLongPathPrefix(string aPath)

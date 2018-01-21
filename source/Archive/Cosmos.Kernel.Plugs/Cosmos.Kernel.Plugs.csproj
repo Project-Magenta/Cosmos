@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Cosmos.Kernel.Plugs</RootNamespace>
     <AssemblyName>Cosmos.Kernel.Plugs</AssemblyName>
-    <TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <SccProjectName>SAK</SccProjectName>
     <SccLocalPath>SAK</SccLocalPath>
@@ -71,9 +71,9 @@
     <Compile Include="ThreadImpl.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Cosmos.Assembler\Cosmos.Assembler.csproj">
+    <ProjectReference Include="..\..\..\..\XSharp\source\XSharp.Assembler\XSharp.Assembler.csproj">
       <Project>{1116130E-28E0-428A-A597-F4B3B676C0CA}</Project>
-      <Name>Cosmos.Assembler</Name>
+      <Name>XSharp.Assembler</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\Cosmos.IL2CPU.Plugs\Cosmos.IL2CPU.Plugs.csproj">
       <Project>{C801F19C-A9D3-42D5-9A57-9FFDF9B4D05E}</Project>

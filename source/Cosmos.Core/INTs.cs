@@ -1,4 +1,6 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
+
+using IL2CPU.API.Attribs;
 
 namespace Cosmos.Core {
     public class INTs {
@@ -133,6 +135,7 @@ namespace Cosmos.Core {
         }
         #endregion
 
+        [AsmMarker(AsmMarker.Type.Int_LastKnownAddress)]
         private static uint mLastKnownAddress;
 
         private static IRQDelegate[] mIRQ_Handlers = new IRQDelegate[256];

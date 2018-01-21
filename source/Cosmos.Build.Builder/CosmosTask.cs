@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Microsoft.Win32;
+using NuGet.Configuration;
+
 using Cosmos.Build.Installer;
 
 namespace Cosmos.Build.Builder {
@@ -88,6 +90,7 @@ namespace Cosmos.Build.Builder {
                        "/nologo " +
                        "/maxcpucount " +
                        "/nodeReuse:False " +
+                       "/p:DeployExtension=False " +
                        $"/p:Configuration={Quoted(aBuildCfg)} " +
                        $"/p:Platform={Quoted("Any CPU")} " +
                        $"/p:OutputPath={Quoted(mVsipPath)}";
@@ -118,22 +121,38 @@ namespace Cosmos.Build.Builder {
       }
     }
 
-    protected void CheckIfVSRunning() {
-      int xSeconds = 500;
-
-      if (Debugger.IsAttached) {
-        Log.WriteLine("Check if Visual Studio is running is ignored by debugging of Builder.");
-      } else {
-        Log.WriteLine("Check if Visual Studio is running.");
-        if (IsRunning("devenv")) {
-          Log.WriteLine("--Visual Studio is running.");
-          Log.WriteLine("--Waiting " + xSeconds + " seconds to see if Visual Studio exits.");
-          // VS doesnt exit right away and user can try devkit again after VS window has closed but is still running.
-          // So we wait a few seconds first.
-          if (WaitForExit("devenv", xSeconds * 1000)) {
-            throw new Exception("Visual Studio is running. Please close it or kill it in task manager.");
-          }
-        }
+    protected void CheckIfVSandCoRunning() {
+      bool xRunningFound = false;
+      if (IsRunning("devenv")) {
+        xRunningFound = true;
+        Log.WriteLine("--Visual Studio is running.");
+      }
+      if (IsRunning("VSIXInstaller")) {
+        xRunningFound = true;
+        Log.WriteLine("--VSIXInstaller is running.");
+      }
+      if (IsRunning("ServiceHub.IdentityHost")) {
+        xRunningFound = true;
+        Log.WriteLine("--ServiceHub.IdentityHost is running.");
+      }
+      if (IsRunning("ServiceHub.VSDetouredHost")) {
+        xRunningFound = true;
+        Log.WriteLine("--ServiceHub.VSDetouredHost is running.");
+      }
+      if (IsRunning("ServiceHub.Host.Node.x86")) {
+        xRunningFound = true;
+        Log.WriteLine("--ServiceHub.Host.Node.x86 is running.");
+      }
+      if (IsRunning("ServiceHub.SettingsHost")) {
+        xRunningFound = true;
+        Log.WriteLine("--ServiceHub.SettingsHost is running.");
+      }
+      if (IsRunning("ServiceHub.Host.CLR.x86")) {
+        xRunningFound = true;
+        Log.WriteLine("--ServiceHub.Host.CLR.x86 is running.");
+      }
+      if (xRunningFound) {
+        Log.WriteLine("--Running blockers found. Setup will warning you and wait for it.");
       }
     }
 
@@ -146,7 +165,7 @@ namespace Cosmos.Build.Builder {
       Section("Check Prerequisites");
 
       CheckIfUserKitRunning();
-      CheckIfVSRunning();
+      CheckIfVSandCoRunning();
       CheckIfBuilderRunning();
 
       CheckForNetCore();
@@ -245,7 +264,29 @@ namespace Cosmos.Build.Builder {
             }
           }
         }
-      }  
+      }
+
+      // Clean Cosmos packages from NuGet cache
+      var xGlobalFolder = SettingsUtility.GetGlobalPackagesFolder(Settings.LoadDefaultSettings(Environment.SystemDirectory));
+
+      // Later we should specify the packages, currently we're moving to gen3 so package names are a bit unstable
+      foreach (var xFolder in Directory.EnumerateDirectories(xGlobalFolder))
+      {
+        if (new DirectoryInfo(xFolder).Name.StartsWith("Cosmos", StringComparison.InvariantCultureIgnoreCase))
+        {
+          CleanPackage(xFolder);
+        }
+      }
+
+      void CleanPackage(string aPackage)
+      {
+        var xPath = Path.Combine(xGlobalFolder, aPackage);
+
+        if (Directory.Exists(xPath))
+        {
+          Directory.Delete(xPath, true);
+        }
+      }
     }
 
     private void Restore(string project)
@@ -261,9 +302,9 @@ namespace Cosmos.Build.Builder {
       StartConsole(xNuget, xUpdateParams);
     }
       
-    private void Pack(string project, string destDir, string version) {
+    private void Pack(string project, string destDir) {
       string xMSBuild = Path.Combine(Paths.VSPath, "MSBuild", "15.0", "Bin", "msbuild.exe");
-      string xParams = $"{Quoted(project)} /nodeReuse:False /t:Restore;Pack /maxcpucount /p:PackageVersion={Quoted(version)} /p:PackageOutputPath={Quoted(destDir)}";
+      string xParams = $"{Quoted(project)} /nodeReuse:False /t:Restore;Pack /maxcpucount /p:PackageOutputPath={Quoted(destDir)}";
       StartConsole(xMSBuild, xParams);
     }
 
@@ -275,18 +316,15 @@ namespace Cosmos.Build.Builder {
 
     private void CompileCosmos() {
       string xVsipDir = Path.Combine(mCosmosPath, "Build", "VSIP");
-      string xNugetPkgDir = Path.Combine(xVsipDir, "KernelPackages");
-      string xVersion = "1.0.2";
-
-      if (!App.IsUserKit) {
-        xVersion += "-" + DateTime.Now.ToString("yyyyMMddHHmm");
-      }
+      string xNugetPkgDir = Path.Combine(xVsipDir, "Packages");
 
       Section("Clean NuGet Local Feed");
       Clean(Path.Combine(mCosmosPath, @"Build.sln"));
 
       Section("Restore NuGet Packages");
       Restore(Path.Combine(mCosmosPath, @"Build.sln"));
+      Restore(Path.Combine(mCosmosPath, @"../IL2CPU/IL2CPU.sln"));
+      Restore(Path.Combine(mCosmosPath, @"../XSharp/XSharp.sln"));
 
       Section("Update NuGet");
       Update();
@@ -297,28 +335,29 @@ namespace Cosmos.Build.Builder {
       MSBuild(Path.Combine(mCosmosPath, @"Build.sln"), "Debug");
 
       Section("Publish Tools");
-      Publish(Path.Combine(mSourcePath, "Cosmos.Build.MSBuild"), Path.Combine(xVsipDir, "MSBuild"));
-      Publish(Path.Combine(mSourcePath, "IL2CPU"), Path.Combine(xVsipDir, "IL2CPU"));
-      Publish(Path.Combine(mSourcePath, "XSharp.Compiler"), Path.Combine(xVsipDir, "XSharp"));
+      //Publish(Path.Combine(mSourcePath, "Cosmos.Build.MSBuild"), Path.Combine(xVsipDir, "MSBuild"));
+      Publish(Path.Combine(mSourcePath, "../../IL2CPU/source/IL2CPU"), Path.Combine(xVsipDir, "IL2CPU"));
       Publish(Path.Combine(mCosmosPath, "Tools", "NASM"), Path.Combine(xVsipDir, "NASM"));
 
-      Section("Pack Kernel");
+      Section("Create Packages");
       //
-      Pack(Path.Combine(mSourcePath, "Cosmos.Common"), xNugetPkgDir, xVersion);
+      Pack(Path.Combine(mSourcePath, "Cosmos.Build.Tasks"), xNugetPkgDir);
       //
-      Pack(Path.Combine(mSourcePath, "Cosmos.Core"), xNugetPkgDir, xVersion);
-      Pack(Path.Combine(mSourcePath, "Cosmos.Core_Plugs"), xNugetPkgDir, xVersion);
-      Pack(Path.Combine(mSourcePath, "Cosmos.Core_Asm"), xNugetPkgDir, xVersion);
+      Pack(Path.Combine(mSourcePath, "Cosmos.Common"), xNugetPkgDir);
       //
-      Pack(Path.Combine(mSourcePath, "Cosmos.HAL2"), xNugetPkgDir, xVersion);
+      Pack(Path.Combine(mSourcePath, "Cosmos.Core"), xNugetPkgDir);
+      Pack(Path.Combine(mSourcePath, "Cosmos.Core_Plugs"), xNugetPkgDir);
+      Pack(Path.Combine(mSourcePath, "Cosmos.Core_Asm"), xNugetPkgDir);
       //
-      Pack(Path.Combine(mSourcePath, "Cosmos.System2"), xNugetPkgDir, xVersion);
-      Pack(Path.Combine(mSourcePath, "Cosmos.System2_Plugs"), xNugetPkgDir, xVersion);
+      Pack(Path.Combine(mSourcePath, "Cosmos.HAL2"), xNugetPkgDir);
       //
-      Pack(Path.Combine(mSourcePath, "Cosmos.Debug.Kernel"), xNugetPkgDir, xVersion);
-      Pack(Path.Combine(mSourcePath, "Cosmos.Debug.Kernel.Plugs.Asm"), xNugetPkgDir, xVersion);
+      Pack(Path.Combine(mSourcePath, "Cosmos.System2"), xNugetPkgDir);
+      Pack(Path.Combine(mSourcePath, "Cosmos.System2_Plugs"), xNugetPkgDir);
       //
-      Pack(Path.Combine(mSourcePath, "Cosmos.IL2CPU.API"), xNugetPkgDir, xVersion);
+      Pack(Path.Combine(mSourcePath, "Cosmos.Debug.Kernel"), xNugetPkgDir);
+      Pack(Path.Combine(mSourcePath, "Cosmos.Debug.Kernel.Plugs.Asm"), xNugetPkgDir);
+      //
+      Pack(Path.Combine(mSourcePath, "../../IL2CPU/source/IL2CPU.API"), xNugetPkgDir);
     }
 
     private void CopyTemplates() {
@@ -382,29 +421,7 @@ namespace Cosmos.Build.Builder {
 
       string setupName = GetSetupName(mReleaseNo);
 
-      if (App.UseTask) {
-        // This is a hack to avoid the UAC dialog on every run which can be very disturbing if you run
-        // the dev kit a lot.
-        Start(@"schtasks.exe", @"/run /tn " + Quoted("CosmosSetup"), true, false);
-
-        // Must check for start before stop, else on slow machines we exit quickly because Exit is found before
-        // it starts.
-        // Some slow user PCs take around 5 seconds to start up the task...
-        int xSeconds = 10;
-        var xTimed = DateTime.Now;
-        Log.WriteLine("Waiting " + xSeconds + " seconds for Setup to start.");
-        if (WaitForStart(setupName, xSeconds * 1000)) {
-          mExceptionList.Add("Setup did not start.");
-          return;
-        }
-        Log.WriteLine("Setup is running. " + DateTime.Now.Subtract(xTimed).ToString(@"ss\.fff"));
-
-        // Scheduler starts it and exits, but we need to wait for the setup itself to exit before proceding
-        Log.WriteLine("Waiting for Setup to complete.");
-        WaitForExit(setupName);
-      } else {
-        Start(mCosmosPath + @"Setup\Output\" + setupName + ".exe", @"/SILENT");
-      }
+      Start(mCosmosPath + @"Setup\Output\" + setupName + ".exe", @"/SILENT");
     }
 
     private void Done() {
