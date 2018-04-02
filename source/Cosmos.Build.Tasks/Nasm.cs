@@ -34,6 +34,9 @@ namespace Cosmos.Build.Tasks
 
         protected override string ToolName => "nasm.exe";
 
+        protected override MessageImportance StandardErrorLoggingImportance => MessageImportance.High;
+        protected override MessageImportance StandardOutputLoggingImportance => MessageImportance.High;
+
         protected override bool ValidateParameters()
         {
             if (String.IsNullOrWhiteSpace(InputFile))
@@ -74,11 +77,8 @@ namespace Cosmos.Build.Tasks
 
             xBuilder.AppendSwitch("-g");
 
-            xBuilder.AppendSwitch("-f");
-            xBuilder.AppendSwitch(OutputFormat);
-
-            xBuilder.AppendSwitch("-o ");
-            xBuilder.AppendSwitch(OutputFile);
+            xBuilder.AppendSwitchIfNotNull("-f ", OutputFormat);
+            xBuilder.AppendSwitchIfNotNull("-o ", OutputFile);
 
             if (mOutputFormat == OutputFormatEnum.ELF)
             {

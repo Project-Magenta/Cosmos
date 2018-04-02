@@ -1,41 +1,37 @@
 @echo off
-cls
 
-echo Check for installed .NET Framework 4.7.1
+set DOTNET_VERSION=4.7.1
 
-FOR /F "tokens=2*" %%A IN ('REG.EXE QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" /V "Release" 2^>NUL ^| FIND "REG_DWORD"') DO SET Ver=%%B
-IF "%Ver%"=="" (
-  echo .NET Framework 4.7.1 or 4.5 or above 4.5 is not installed. Please download from https://www.microsoft.com/net/download/visual-studio-sdks
-  pause
-  goto:eof
-)
-SET "NET471_CREATORS=0x709fc"
+echo Check for installed .NET Framework %DOTNET_VERSION%
 
-if NOT "%NET471_CREATORS%"=="%Ver%" (
-  echo .NET Framework 4.7.1 is required.
+reg query "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\.NETFramework\v4.0.30319\SKUs\.NETFramework,Version=v%DOTNET_VERSION%" /ve >nul 2>&1
+
+if %ERRORLEVEL% neq 0 (
+  echo ".NET Framework %DOTNET_VERSION% is not installed. Please download it from https://www.microsoft.com/net/download/visual-studio-sdks"
   pause
   goto:eof
 )
 
-set NuGet=Build\Tools\nuget.exe
-set VSWhere=Build\Tools\vswhere.exe
-
-:NuGet
-echo Running NuGet restore
-%NuGet% restore Builder.sln
+set "ARCH=%PROCESSOR_ARCHITECTURE%"
+if %ARCH%==x86 set "VSWhere=%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
+if %ARCH%==AMD64 set "VSWhere=%ProrgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+REM set "VSWhere=%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
 
 :MSBuild
 echo Looking for MSBuild
-for /f "usebackq delims=" %%i in (`%VSWhere% -latest -version "[15.0,16.0)" -requires "Microsoft.Component.MSBuild" -property "installationPath"`) do (
+for /f "usebackq delims=" %%i in (`^""%VSWhere%" -latest -version "[15.0,16.0)" -products * -requires "Microsoft.Component.MSBuild" -property "installationPath"^"`) do (
   set InstallDir=%%i
 )
 
-if exist "%InstallDir%\MSBuild\15.0\Bin\MSBuild.exe" (
-  set MSBuild="%InstallDir%\MSBuild\15.0\Bin\MSBuild.exe"
+set "MSBuild=%InstallDir%\MSBuild\15.0\Bin\MSBuild.exe"
+
+if not exist "%MSBuild%" (
+  echo MSBuild not found. Please make sure Visual Studio 15.2+ is installed.
+  pause
+  goto:eof
 )
 
-if exist %MSBuild% (
-  %MSBuild% Builder.sln /nologo /maxcpucount /nodeReuse:false /p:Configuration="Debug" /p:Platform="Any CPU"
-)
+echo Building Builder.sln
+"%MSBuild%" Builder.sln /nologo /maxcpucount /nodeReuse:false /verbosity:minimal /t:Restore;Build
 
-start "Cosmos Builder" "source\Cosmos.Build.Builder\bin\Debug\Cosmos.Build.Builder.exe" "-VSPATH=%InstallDir%" %1 %2 %3 %4 %5 %6 %7 %8 %9
+start "Cosmos Builder" "source\Cosmos.Build.Builder\bin\Debug\net471\Cosmos.Build.Builder.exe" "-VSPATH=%InstallDir%" %*
